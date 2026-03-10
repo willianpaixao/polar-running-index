@@ -27,12 +27,25 @@ packages = ["src/polar_running_index"]
 dev-dependencies = [
     "mypy>=1.19",
     "pytest>=7.0",
+    "pytest-cov>=6.0",
     "pre-commit>=4.0",
     "ruff>=0.11",
 ]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+addopts = "--cov=polar_running_index --cov-report=term-missing"
+filterwarnings = [
+    "ignore:datetime.datetime.utcfromtimestamp:DeprecationWarning:fitparse",
+]
+
+[tool.coverage.run]
+source = ["polar_running_index"]
+
+[tool.coverage.report]
+show_missing = true
+skip_empty = true
+fail_under = 80
 
 [tool.ruff]
 target-version = "py311"
