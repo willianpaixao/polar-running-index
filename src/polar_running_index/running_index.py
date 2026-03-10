@@ -15,7 +15,12 @@ References:
 
 import statistics
 
-from polar_running_index.models import ActivityData, ActivityRecord, RunningIndexResult
+from polar_running_index.models import (
+    ActivityData,
+    ActivityRecord,
+    RunningIndexResult,
+    SegmentResult,
+)
 
 # Constants from patent and ACSM guidelines
 VO2_REST = 3.5  # ml/kg/min (1 MET, resting metabolic rate)
@@ -123,6 +128,139 @@ def calculate_running_index(
         valid_window_end=window_end,
         summary_stats=summary,
     )
+
+
+def calculate_segment_running_index(
+    activity: ActivityData,
+    hr_max: int,
+    hr_rest: int,
+    method: str = "hrr",
+    drift_correction: bool = True,
+) -> list[SegmentResult]:
+    """Calculate Running Index for each segment of an activity.
+
+    Uses lap boundaries from the FIT file if more than one lap is present.
+    Otherwise, falls back to per-kilometer splits based on cumulative distance.
+
+    Args:
+        activity: Parsed activity data from a FIT file.
+        hr_max: User's maximum heart rate (bpm).
+        hr_rest: User's resting heart rate (bpm).
+        method: Algorithm variant — "hrr" or "hrmax_ratio".
+        drift_correction: Whether to apply cardiac drift correction.
+
+    Returns:
+        List of SegmentResult, one per segment.
+    """
+    _validate_params(hr_max, hr_rest, method)
+
+    valid_records = _filter_valid_records(activity.records)
+    if not valid_records:
+        return []
+
+    # Compute activity-wide drift correction
+    if drift_correction:
+        all_hr_corrections = _compute_drift_corrections(valid_records)
+        # Build a lookup: elapsed_seconds -> correction
+        drift_by_time = dict(
+            zip(
+                [r.elapsed_seconds for r in valid_records],
+                all_hr_corrections,
+                strict=False,
+            )
+        )
+    else:
+        drift_by_time = {}
+
+    # Choose segmentation strategy
+    if len(activity.laps) > 1:
+        boundaries = [
+            (f"Lap {i + 1}", lap.start_elapsed, lap.end_elapsed)
+            for i, lap in enumerate(activity.laps)
+        ]
+    else:
+        boundaries = _build_km_boundaries(activity.records)
+
+    # Compute RI per segment
+    results: list[SegmentResult] = []
+    for label, seg_start, seg_end in boundaries:
+        seg_records = [
+            r for r in valid_records if seg_start <= r.elapsed_seconds < seg_end
+        ]
+
+        if len(seg_records) < 10:
+            continue
+
+        # Compute per-sample RI for this segment
+        per_sample: list[float] = []
+        for record in seg_records:
+            hr_corr = drift_by_time.get(record.elapsed_seconds, 0.0)
+            corrected_hr = record.heart_rate - hr_corr
+            corrected_hr = max(corrected_hr, hr_rest + 1)
+            corrected_hr = min(corrected_hr, hr_max)
+
+            if method == "hrr":
+                ri = _formula_hrr(record.speed, corrected_hr, hr_max, hr_rest)
+            else:
+                ri = _formula_hrmax_ratio(record.speed, corrected_hr, hr_max)
+
+            per_sample.append(ri)
+
+        filtered = _remove_outliers(per_sample)
+        if not filtered:
+            filtered = per_sample
+
+        # Compute segment metrics
+        hrs = [r.heart_rate for r in seg_records]
+        speeds = [r.speed for r in seg_records]
+
+        # Distance covered in this segment
+        seg_dist_start = seg_records[0].distance
+        seg_dist_end = seg_records[-1].distance
+        seg_distance = seg_dist_end - seg_dist_start
+
+        results.append(
+            SegmentResult(
+                label=label,
+                start_seconds=seg_records[0].elapsed_seconds,
+                end_seconds=seg_records[-1].elapsed_seconds,
+                distance_meters=seg_distance,
+                avg_heart_rate=sum(hrs) / len(hrs),
+                max_heart_rate=max(hrs),
+                avg_speed_ms=sum(speeds) / len(speeds),
+                running_index=statistics.mean(filtered),
+                n_samples=len(filtered),
+            )
+        )
+
+    return results
+
+
+def _build_km_boundaries(
+    records: list[ActivityRecord],
+) -> list[tuple[str, float, float]]:
+    """Build per-kilometer segment boundaries from record distance data.
+
+    Returns a list of (label, start_elapsed, end_elapsed) tuples.
+    """
+    if not records:
+        return []
+
+    boundaries: list[tuple[str, float, float]] = []
+    km_num = 1
+    seg_start = records[0].elapsed_seconds
+
+    for record in records:
+        if record.distance >= km_num * 1000.0:
+            boundaries.append((f"Km {km_num}", seg_start, record.elapsed_seconds))
+            seg_start = record.elapsed_seconds
+            km_num += 1
+
+    # Final partial segment (less than 1 km)
+    if seg_start < records[-1].elapsed_seconds:
+        boundaries.append((f"Km {km_num}", seg_start, records[-1].elapsed_seconds + 1))
+
+    return boundaries
 
 
 def vo2_demand_acsm(speed_ms: float, grade: float = 0.0) -> float:

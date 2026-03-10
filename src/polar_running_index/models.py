@@ -18,6 +18,14 @@ class ActivityRecord:
 
 
 @dataclass
+class LapBoundary:
+    """Time boundaries of a single lap from the FIT file."""
+
+    start_elapsed: float  # seconds from activity start
+    end_elapsed: float  # seconds from activity start
+
+
+@dataclass
 class ActivityData:
     """Parsed activity data from a FIT file."""
 
@@ -27,6 +35,7 @@ class ActivityData:
     start_time: datetime
     total_duration: float  # seconds (timer time)
     total_distance: float  # meters
+    laps: list[LapBoundary] = field(default_factory=list)
 
     @property
     def avg_heart_rate(self) -> float:
@@ -93,6 +102,31 @@ class ComparisonResult:
     calculated_ri: float  # Our computed value
     delta: float  # calculated - polar
     delta_percent: float  # (delta / polar) * 100
+
+
+@dataclass
+class SegmentResult:
+    """Running Index result for a single segment of an activity."""
+
+    label: str  # e.g. "Lap 1", "Km 1"
+    start_seconds: float  # elapsed seconds at segment start
+    end_seconds: float  # elapsed seconds at segment end
+    distance_meters: float  # distance covered in this segment
+    avg_heart_rate: float
+    max_heart_rate: int
+    avg_speed_ms: float
+    running_index: float  # RI computed for this segment alone
+    n_samples: int  # number of valid records used
+
+    @property
+    def pace_min_per_km(self) -> str:
+        """Pace as 'M:SS' string."""
+        if self.avg_speed_ms <= 0:
+            return "--:--"
+        secs_per_km = 1000.0 / self.avg_speed_ms
+        mins = int(secs_per_km // 60)
+        secs = int(secs_per_km % 60)
+        return f"{mins}:{secs:02d}"
 
 
 @dataclass

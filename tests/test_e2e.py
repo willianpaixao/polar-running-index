@@ -308,6 +308,113 @@ class TestE2eComparison:
         assert data["comparison"]["delta_percent"] > 0
 
 
+class TestE2eSegments:
+    """End-to-end tests for the --segments feature."""
+
+    def test_treadmill_segments_km_fallback(self):
+        """Treadmill 12km has 1 lap, so should use per-km segmentation."""
+        result = run_cli(
+            str(FIXTURE_12KM),
+            "--hr-max",
+            "190",
+            "--hr-rest",
+            "50",
+            "--segments",
+            "--json",
+        )
+        assert result.returncode == 0
+        data = json.loads(result.stdout)
+        assert "segments" in data
+        segments = data["segments"]
+        assert len(segments) > 0
+        assert all(s["label"].startswith("Km") for s in segments)
+
+    def test_marathon_segments_lap_based(self):
+        """Marathon has 44 laps, so should use lap-based segmentation."""
+        result = run_cli(
+            str(FIXTURE_MARATHON),
+            "--hr-max",
+            "190",
+            "--hr-rest",
+            "55",
+            "--segments",
+            "--json",
+        )
+        assert result.returncode == 0
+        data = json.loads(result.stdout)
+        assert "segments" in data
+        segments = data["segments"]
+        assert len(segments) > 0
+        assert all(s["label"].startswith("Lap") for s in segments)
+
+    def test_segments_ri_in_plausible_range(self):
+        result = run_cli(
+            str(FIXTURE_12KM),
+            "--hr-max",
+            "190",
+            "--hr-rest",
+            "50",
+            "--segments",
+            "--json",
+        )
+        assert result.returncode == 0
+        data = json.loads(result.stdout)
+        for seg in data["segments"]:
+            ri = seg["running_index"]
+            assert 25 < ri < 85, f"{seg['label']}: RI {ri} out of range"
+
+    def test_segments_text_output(self):
+        result = run_cli(
+            str(FIXTURE_12KM),
+            "--hr-max",
+            "190",
+            "--hr-rest",
+            "50",
+            "--segments",
+        )
+        assert result.returncode == 0
+        assert "Segments:" in result.stdout
+        assert "Km 1" in result.stdout
+        assert "/km" in result.stdout
+
+    def test_no_segments_without_flag(self):
+        result = run_cli(
+            str(FIXTURE_12KM),
+            "--hr-max",
+            "190",
+            "--hr-rest",
+            "50",
+            "--json",
+        )
+        assert result.returncode == 0
+        data = json.loads(result.stdout)
+        assert "segments" not in data
+
+    def test_segments_json_structure(self):
+        result = run_cli(
+            str(FIXTURE_12KM),
+            "--hr-max",
+            "190",
+            "--hr-rest",
+            "50",
+            "--segments",
+            "--json",
+        )
+        assert result.returncode == 0
+        data = json.loads(result.stdout)
+        seg = data["segments"][0]
+        assert "label" in seg
+        assert "start_seconds" in seg
+        assert "end_seconds" in seg
+        assert "distance_meters" in seg
+        assert "avg_heart_rate" in seg
+        assert "max_heart_rate" in seg
+        assert "avg_speed_kmh" in seg
+        assert "pace_min_per_km" in seg
+        assert "running_index" in seg
+        assert "n_samples" in seg
+
+
 class TestE2eTreadmill15km:
     """End-to-end tests for the treadmill 15 km fixture."""
 

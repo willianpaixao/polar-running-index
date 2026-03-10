@@ -7,6 +7,7 @@ from polar_running_index.models import (
     ActivityData,
     ComparisonResult,
     RunningIndexResult,
+    SegmentResult,
 )
 
 # Performance level classification based on VO2max (ml/kg/min)
@@ -38,6 +39,7 @@ def format_text_report(
     hr_max: int,
     hr_rest: int,
     comparison: ComparisonResult | None = None,
+    segments: list[SegmentResult] | None = None,
 ) -> str:
     """Format a human-readable text report.
 
@@ -47,6 +49,7 @@ def format_text_report(
         hr_max: User's maximum heart rate.
         hr_rest: User's resting heart rate.
         comparison: Optional comparison with official Polar RI.
+        segments: Optional per-segment Running Index breakdown.
 
     Returns:
         Formatted multi-line string.
@@ -102,6 +105,24 @@ def format_text_report(
         f"{stats.get('n_outliers', 0):.0f} outliers removed",
     ]
 
+    if segments:
+        lines.extend(
+            [
+                "",
+                "-" * 50,
+                "",
+                "  Segments:",
+            ]
+        )
+        for seg in segments:
+            duration = seg.end_seconds - seg.start_seconds
+            lines.append(
+                f"    {seg.label:>6s}:  RI {seg.running_index:5.1f}"
+                f"  |  {seg.pace_min_per_km} /km"
+                f"  |  HR {seg.avg_heart_rate:.0f}"
+                f"  |  {duration:.0f}s"
+            )
+
     if comparison is not None:
         direction = "lower" if comparison.delta < 0 else "higher"
         lines.extend(
@@ -136,6 +157,7 @@ def format_json_report(
     hr_max: int,
     hr_rest: int,
     comparison: ComparisonResult | None = None,
+    segments: list[SegmentResult] | None = None,
 ) -> str:
     """Format a machine-readable JSON report.
 
@@ -145,6 +167,7 @@ def format_json_report(
         hr_max: User's maximum heart rate.
         hr_rest: User's resting heart rate.
         comparison: Optional comparison with official Polar RI.
+        segments: Optional per-segment Running Index breakdown.
 
     Returns:
         JSON string.
@@ -178,6 +201,23 @@ def format_json_report(
             "end_seconds": result.valid_window_end,
         },
     }
+
+    if segments:
+        data["segments"] = [
+            {
+                "label": seg.label,
+                "start_seconds": round(seg.start_seconds, 1),
+                "end_seconds": round(seg.end_seconds, 1),
+                "distance_meters": round(seg.distance_meters, 1),
+                "avg_heart_rate": round(seg.avg_heart_rate),
+                "max_heart_rate": seg.max_heart_rate,
+                "avg_speed_kmh": round(seg.avg_speed_ms * 3.6, 1),
+                "pace_min_per_km": seg.pace_min_per_km,
+                "running_index": round(seg.running_index, 1),
+                "n_samples": seg.n_samples,
+            }
+            for seg in segments
+        ]
 
     if comparison is not None:
         data["comparison"] = {

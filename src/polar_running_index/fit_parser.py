@@ -5,7 +5,7 @@ from pathlib import Path
 
 import fitdecode  # type: ignore[import-untyped,unused-ignore]
 
-from polar_running_index.models import ActivityData, ActivityRecord
+from polar_running_index.models import ActivityData, ActivityRecord, LapBoundary
 
 
 class FitParseError(Exception):
@@ -40,6 +40,7 @@ def parse_fit_file(path: str | Path) -> ActivityData:
     total_duration: float = 0.0
     total_distance: float = 0.0
     raw_records: list[tuple[datetime, int, float, float, int | None, float | None]] = []
+    raw_laps: list[tuple[datetime, datetime]] = []
 
     with fitdecode.FitReader(str(path)) as fit:
         for frame in fit:
@@ -55,6 +56,11 @@ def parse_fit_file(path: str | Path) -> ActivityData:
                 parsed = _extract_record(frame)
                 if parsed is not None:
                     raw_records.append(parsed)
+
+            elif frame.name == "lap":
+                lap = _extract_lap(frame)
+                if lap is not None:
+                    raw_laps.append(lap)
 
     # Validate session was found
     if sport is None or start_time is None:
@@ -81,6 +87,9 @@ def parse_fit_file(path: str | Path) -> ActivityData:
             f"minimum required is {MIN_DURATION_S}s (12 minutes)."
         )
 
+    # Build lap boundaries
+    laps = _build_laps(raw_laps, start_time)
+
     return ActivityData(
         records=records,
         sport=sport,
@@ -88,6 +97,7 @@ def parse_fit_file(path: str | Path) -> ActivityData:
         start_time=start_time,
         total_duration=total_duration,
         total_distance=total_distance,
+        laps=laps,
     )
 
 
@@ -140,6 +150,22 @@ def _extract_record(
     )
 
 
+def _extract_lap(
+    frame: fitdecode.FitDataMessage,
+) -> tuple[datetime, datetime] | None:
+    """Extract lap start and end timestamps from a lap frame.
+
+    Returns a (start_time, end_time) tuple or None if timestamps are missing.
+    """
+    lap_start = frame.get_value("start_time", fallback=None)
+    lap_end = frame.get_value("timestamp", fallback=None)
+
+    if lap_start is None or lap_end is None:
+        return None
+
+    return lap_start, lap_end
+
+
 def _build_records(
     raw_records: list[tuple[datetime, int, float, float, int | None, float | None]],
     start_time: datetime,
@@ -156,4 +182,18 @@ def _build_records(
             altitude=alt,
         )
         for ts, hr, spd, dist, cad, alt in raw_records
+    ]
+
+
+def _build_laps(
+    raw_laps: list[tuple[datetime, datetime]],
+    start_time: datetime,
+) -> list[LapBoundary]:
+    """Convert raw lap timestamps into LapBoundary objects."""
+    return [
+        LapBoundary(
+            start_elapsed=(lap_start - start_time).total_seconds(),
+            end_elapsed=(lap_end - start_time).total_seconds(),
+        )
+        for lap_start, lap_end in raw_laps
     ]

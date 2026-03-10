@@ -86,6 +86,10 @@ class TestParseFitFile:
         dur = sample_activity.duration_str
         assert "m" in dur
 
+    def test_lap_count(self, sample_activity):
+        """Treadmill 12km has 1 lap."""
+        assert len(sample_activity.laps) == 1
+
 
 class TestParseMarathonFit:
     """Tests for the outdoor marathon FIT fixture."""
@@ -129,6 +133,18 @@ class TestParseMarathonFit:
             assert not hasattr(r, "position_lat")
             assert not hasattr(r, "position_long")
 
+    def test_lap_count(self, marathon_activity):
+        """Marathon has 44 laps."""
+        assert len(marathon_activity.laps) == 44
+
+    def test_laps_are_contiguous(self, marathon_activity):
+        """Each lap should end where the next begins."""
+        laps = marathon_activity.laps
+        for i in range(len(laps) - 1):
+            assert laps[i].end_elapsed == pytest.approx(
+                laps[i + 1].start_elapsed, abs=1.0
+            )
+
 
 class TestParseHalfMarathonFit:
     """Tests for the outdoor half marathon FIT fixture."""
@@ -170,3 +186,7 @@ class TestParseHalfMarathonFit:
         for r in half_marathon_activity.records:
             assert not hasattr(r, "position_lat")
             assert not hasattr(r, "position_long")
+
+    def test_lap_count(self, half_marathon_activity):
+        """Half marathon has 2 laps."""
+        assert len(half_marathon_activity.laps) == 2

@@ -112,6 +112,50 @@ class TestCli:
         data = json.loads(captured.out)
         assert "comparison" not in data
 
+    def test_segments_text(self, capsys):
+        """CLI with --segments should show segment breakdown in text."""
+        exit_code = main(
+            [str(SAMPLE_FIT), "--hr-max", "190", "--hr-rest", "50", "--segments"]
+        )
+        assert exit_code == 0
+        captured = capsys.readouterr()
+        assert "Segments:" in captured.out
+        assert "Km 1" in captured.out
+
+    def test_segments_json(self, capsys):
+        """CLI with --segments --json should include segments array."""
+        exit_code = main(
+            [
+                str(SAMPLE_FIT),
+                "--hr-max",
+                "190",
+                "--hr-rest",
+                "50",
+                "--segments",
+                "--json",
+            ]
+        )
+        assert exit_code == 0
+        captured = capsys.readouterr()
+        data = json.loads(captured.out)
+        assert "segments" in data
+        assert isinstance(data["segments"], list)
+        assert len(data["segments"]) > 0
+        seg = data["segments"][0]
+        assert "label" in seg
+        assert "running_index" in seg
+        assert "pace_min_per_km" in seg
+
+    def test_no_segments_without_flag(self, capsys):
+        """Without --segments, no segments section should appear."""
+        exit_code = main(
+            [str(SAMPLE_FIT), "--hr-max", "190", "--hr-rest", "50", "--json"]
+        )
+        assert exit_code == 0
+        captured = capsys.readouterr()
+        data = json.loads(captured.out)
+        assert "segments" not in data
+
     def test_file_not_found(self, capsys):
         """CLI should return 1 for missing file."""
         exit_code = main(["/nonexistent.fit", "--hr-max", "190", "--hr-rest", "50"])

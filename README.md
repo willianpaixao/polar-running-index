@@ -69,6 +69,41 @@ $ uv run polar-running-index activity.FIT --hr-max 190 --hr-rest 50
 ==================================================
 ```
 
+### Segment analysis
+
+Use `--segments` to see Running Index broken down per segment. If the FIT file
+contains multiple laps, lap boundaries are used. Otherwise, the activity is
+split into per-kilometer segments.
+
+```
+$ uv run polar-running-index activity.FIT --hr-max 190 --hr-rest 50 --segments
+
+  ...
+
+  Segments:
+      Km 1:  RI  55.5  |  5:33 /km  |  HR 141  |  153s
+      Km 2:  RI  52.6  |  5:25 /km  |  HR 150  |  324s
+      Km 3:  RI  50.9  |  5:26 /km  |  HR 155  |  326s
+      Km 4:  RI  51.0  |  5:23 /km  |  HR 157  |  325s
+      ...
+```
+
+### Comparison with Polar Flow
+
+Use `--polar-ri` to compare the calculated value against the official Running
+Index from Polar Flow:
+
+```
+$ uv run polar-running-index activity.FIT --hr-max 190 --hr-rest 50 --polar-ri 58
+
+  ...
+
+  Comparison with Polar:
+    Polar RI:      58.0
+    Calculated:    52.6
+    Difference:    -5.4 (9.3% lower)
+```
+
 ### Options
 
 | Flag | Description |
@@ -77,6 +112,8 @@ $ uv run polar-running-index activity.FIT --hr-max 190 --hr-rest 50
 | `--hr-rest` | Resting heart rate in bpm (required) |
 | `--method {hrr,hrmax_ratio}` | Algorithm variant (default: `hrr`) |
 | `--no-drift-correction` | Disable cardiac drift correction |
+| `--polar-ri` | Official Polar RI for comparison |
+| `--segments` | Show per-segment Running Index breakdown |
 | `--json` | Output results as JSON |
 
 ### Algorithm methods

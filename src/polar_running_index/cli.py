@@ -6,7 +6,10 @@ import sys
 from polar_running_index.fit_parser import FitParseError, parse_fit_file
 from polar_running_index.models import ComparisonResult
 from polar_running_index.output import format_json_report, format_text_report
-from polar_running_index.running_index import calculate_running_index
+from polar_running_index.running_index import (
+    calculate_running_index,
+    calculate_segment_running_index,
+)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -14,9 +17,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="polar-running-index",
         description=(
-            "Calculate Polar Running Index (VO2max estimate) from a "
-            "FIT file. Based on patents US2007082789 / EP1795128 "
-            "and the ACSM metabolic equations."
+            "Calculate Polar Running Index (VO2max estimate) from a FIT file."
         ),
     )
 
@@ -57,6 +58,12 @@ def build_parser() -> argparse.ArgumentParser:
         type=float,
         default=None,
         help="Official Polar Running Index from Polar Flow for comparison",
+    )
+    parser.add_argument(
+        "--segments",
+        action="store_true",
+        default=False,
+        help="Show per-segment Running Index breakdown",
     )
     parser.add_argument(
         "--json",
@@ -105,17 +112,38 @@ def main(argv: list[str] | None = None) -> int:
                 delta_percent=delta_pct,
             )
 
+        # Compute segments if requested
+        segments = None
+        if args.segments:
+            segments = calculate_segment_running_index(
+                activity=activity,
+                hr_max=args.hr_max,
+                hr_rest=args.hr_rest,
+                method=args.method,
+                drift_correction=not args.no_drift_correction,
+            )
+
         # Output results
         if args.json:
             print(
                 format_json_report(
-                    activity, result, args.hr_max, args.hr_rest, comparison
+                    activity,
+                    result,
+                    args.hr_max,
+                    args.hr_rest,
+                    comparison,
+                    segments,
                 )
             )
         else:
             print(
                 format_text_report(
-                    activity, result, args.hr_max, args.hr_rest, comparison
+                    activity,
+                    result,
+                    args.hr_max,
+                    args.hr_rest,
+                    comparison,
+                    segments,
                 )
             )
 

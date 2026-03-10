@@ -4,14 +4,16 @@ from datetime import datetime, timedelta
 
 import pytest
 
-from polar_running_index.models import ActivityData, ActivityRecord
+from polar_running_index.models import ActivityData, ActivityRecord, LapBoundary
 from polar_running_index.running_index import (
     VO2_REST,
+    _build_km_boundaries,
     _formula_hrmax_ratio,
     _formula_hrr,
     _linear_regression_slope,
     _remove_outliers,
     calculate_running_index,
+    calculate_segment_running_index,
     predict_race_times,
     vo2_demand_acsm,
     vo2_demand_patent,
@@ -319,3 +321,142 @@ class TestPredictRaceTimes:
         preds = predict_race_times(50.0)
         five_k = next(p for p in preds if p[0] == "5K")
         assert 20 * 60 < five_k[2] < 35 * 60
+
+
+# --- Segment analysis ---
+
+
+class TestBuildKmBoundaries:
+    def test_produces_correct_number(self):
+        """3 km activity should produce 3 km boundaries."""
+        activity = _make_activity(n_records=1200, speed_ms=3.0, start_elapsed=0.0)
+        boundaries = _build_km_boundaries(activity.records)
+        # 1200s * 3.0 m/s = 3600m -> 3 full km + partial
+        assert len(boundaries) == 4  # Km 1, 2, 3, partial Km 4
+
+    def test_labels_are_sequential(self):
+        activity = _make_activity(n_records=1200, speed_ms=3.0, start_elapsed=0.0)
+        boundaries = _build_km_boundaries(activity.records)
+        labels = [b[0] for b in boundaries]
+        assert labels[0] == "Km 1"
+        assert labels[1] == "Km 2"
+        assert labels[2] == "Km 3"
+
+    def test_empty_records(self):
+        assert _build_km_boundaries([]) == []
+
+
+class TestCalculateSegmentRunningIndex:
+    def test_km_fallback_when_single_lap(self):
+        """With no laps (or 1 lap), should use per-km segmentation."""
+        activity = _make_activity(
+            n_records=3000, speed_ms=3.1, hr_start=140, hr_end=165
+        )
+        segments = calculate_segment_running_index(
+            activity, hr_max=190, hr_rest=50, drift_correction=False
+        )
+        assert len(segments) > 0
+        assert all(s.label.startswith("Km") for s in segments)
+
+    def test_lap_segmentation_when_multiple_laps(self):
+        """With multiple laps, should use lap boundaries."""
+        activity = _make_activity(
+            n_records=3000, speed_ms=3.1, hr_start=140, hr_end=165
+        )
+        activity.laps = [
+            LapBoundary(start_elapsed=180.0, end_elapsed=600.0),
+            LapBoundary(start_elapsed=600.0, end_elapsed=1200.0),
+            LapBoundary(start_elapsed=1200.0, end_elapsed=1800.0),
+        ]
+        segments = calculate_segment_running_index(
+            activity, hr_max=190, hr_rest=50, drift_correction=False
+        )
+        assert len(segments) == 3
+        assert segments[0].label == "Lap 1"
+        assert segments[1].label == "Lap 2"
+        assert segments[2].label == "Lap 3"
+
+    def test_segment_ri_in_plausible_range(self):
+        activity = _make_activity(
+            n_records=3000, speed_ms=3.1, hr_start=140, hr_end=165
+        )
+        segments = calculate_segment_running_index(
+            activity, hr_max=190, hr_rest=50, drift_correction=False
+        )
+        for seg in segments:
+            assert 25 < seg.running_index < 85, (
+                f"{seg.label}: RI {seg.running_index} out of range"
+            )
+
+    def test_segment_has_positive_distance(self):
+        activity = _make_activity(
+            n_records=3000, speed_ms=3.1, hr_start=140, hr_end=165
+        )
+        segments = calculate_segment_running_index(
+            activity, hr_max=190, hr_rest=50, drift_correction=False
+        )
+        for seg in segments:
+            assert seg.distance_meters > 0, f"{seg.label}: zero distance"
+
+    def test_segments_cover_valid_window(self):
+        """Segment time ranges should be within the valid window."""
+        activity = _make_activity(
+            n_records=3000, speed_ms=3.1, hr_start=140, hr_end=165
+        )
+        segments = calculate_segment_running_index(
+            activity, hr_max=190, hr_rest=50, drift_correction=False
+        )
+        assert segments[0].start_seconds >= 180.0  # valid window start
+
+    def test_skips_segments_with_few_records(self):
+        """Segments with < 10 records should be skipped."""
+        activity = _make_activity(
+            n_records=3000, speed_ms=3.1, hr_start=140, hr_end=165
+        )
+        # Create laps where one is very short (5 seconds)
+        activity.laps = [
+            LapBoundary(start_elapsed=180.0, end_elapsed=185.0),
+            LapBoundary(start_elapsed=185.0, end_elapsed=1000.0),
+        ]
+        segments = calculate_segment_running_index(
+            activity, hr_max=190, hr_rest=50, drift_correction=False
+        )
+        # First lap is too short, should be skipped
+        assert len(segments) == 1
+        assert segments[0].label == "Lap 2"
+
+    def test_empty_when_no_valid_records(self):
+        """Activity with all records outside valid window should return []."""
+        activity = _make_activity(
+            n_records=100, speed_ms=3.1, hr_start=140, hr_end=165, start_elapsed=0.0
+        )
+        # Only 100 records starting at 0s -- all before 180s valid window
+        segments = calculate_segment_running_index(activity, hr_max=190, hr_rest=50)
+        assert segments == []
+
+    def test_drift_correction_applied(self):
+        """Segments with drift correction should differ from without."""
+        activity = _make_activity(
+            n_records=3000, speed_ms=3.1, hr_start=140, hr_end=165
+        )
+        seg_drift = calculate_segment_running_index(
+            activity, hr_max=190, hr_rest=50, drift_correction=True
+        )
+        seg_no_drift = calculate_segment_running_index(
+            activity, hr_max=190, hr_rest=50, drift_correction=False
+        )
+        # At least one segment should differ
+        assert any(
+            abs(a.running_index - b.running_index) > 0.01
+            for a, b in zip(seg_drift, seg_no_drift, strict=False)
+        )
+
+    def test_pace_min_per_km_format(self):
+        activity = _make_activity(
+            n_records=3000, speed_ms=3.1, hr_start=140, hr_end=165
+        )
+        segments = calculate_segment_running_index(
+            activity, hr_max=190, hr_rest=50, drift_correction=False
+        )
+        for seg in segments:
+            assert ":" in seg.pace_min_per_km
