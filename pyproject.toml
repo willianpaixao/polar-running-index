@@ -10,7 +10,7 @@ classifiers = [
 requires-python = ">=3.11,<3.13"
 license = {text = "MIT"}
 dependencies = [
-    "fitparse>=1.2.0",
+    "fitdecode>=0.11.0",
 ]
 
 [project.scripts]
@@ -35,9 +35,6 @@ dev-dependencies = [
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "--cov=polar_running_index --cov-report=term-missing"
-filterwarnings = [
-    "ignore:datetime.datetime.utcfromtimestamp:DeprecationWarning:fitparse",
-]
 
 [tool.coverage.run]
 source = ["polar_running_index"]

@@ -1,6 +1,6 @@
 # Polar Running Index
 
-Calculate [Polar Running Index](https://www.polar.com/blog/running-index/) (VO2max estimate) from FIT files.
+Calculate [Polar Running Index](https://www.polar.com/en/smart-coaching/running-index) (VO2max estimate) from FIT files.
 
 Running Index estimates your maximal oxygen uptake (VO2max) from heart rate and
 speed data recorded during a run. It is based on the algorithms described in

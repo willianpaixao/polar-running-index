@@ -3,7 +3,11 @@
 import json
 from typing import Any
 
-from polar_running_index.models import ActivityData, RunningIndexResult
+from polar_running_index.models import (
+    ActivityData,
+    ComparisonResult,
+    RunningIndexResult,
+)
 
 # Performance level classification based on VO2max (ml/kg/min)
 # From Shvartz & Reibold (1990) — the reference used by Polar
@@ -33,6 +37,7 @@ def format_text_report(
     result: RunningIndexResult,
     hr_max: int,
     hr_rest: int,
+    comparison: ComparisonResult | None = None,
 ) -> str:
     """Format a human-readable text report.
 
@@ -41,6 +46,7 @@ def format_text_report(
         result: Running Index calculation result.
         hr_max: User's maximum heart rate.
         hr_rest: User's resting heart rate.
+        comparison: Optional comparison with official Polar RI.
 
     Returns:
         Formatted multi-line string.
@@ -94,10 +100,32 @@ def format_text_report(
         f"    Max:       {stats.get('max', 0):.1f}",
         f"    Samples:   {stats.get('n_filtered', 0):.0f} used, "
         f"{stats.get('n_outliers', 0):.0f} outliers removed",
-        "",
-        "=" * 50,
-        "",
     ]
+
+    if comparison is not None:
+        direction = "lower" if comparison.delta < 0 else "higher"
+        lines.extend(
+            [
+                "",
+                "-" * 50,
+                "",
+                "  Comparison with Polar:",
+                f"    Polar RI:      {comparison.polar_ri:.1f}",
+                f"    Calculated:    {comparison.calculated_ri:.1f}",
+                (
+                    f"    Difference:    {comparison.delta:+.1f}"
+                    f" ({abs(comparison.delta_percent):.1f}% {direction})"
+                ),
+            ]
+        )
+
+    lines.extend(
+        [
+            "",
+            "=" * 50,
+            "",
+        ]
+    )
 
     return "\n".join(lines)
 
@@ -107,6 +135,7 @@ def format_json_report(
     result: RunningIndexResult,
     hr_max: int,
     hr_rest: int,
+    comparison: ComparisonResult | None = None,
 ) -> str:
     """Format a machine-readable JSON report.
 
@@ -115,6 +144,7 @@ def format_json_report(
         result: Running Index calculation result.
         hr_max: User's maximum heart rate.
         hr_rest: User's resting heart rate.
+        comparison: Optional comparison with official Polar RI.
 
     Returns:
         JSON string.
@@ -148,5 +178,13 @@ def format_json_report(
             "end_seconds": result.valid_window_end,
         },
     }
+
+    if comparison is not None:
+        data["comparison"] = {
+            "polar_ri": comparison.polar_ri,
+            "calculated_ri": round(comparison.calculated_ri, 1),
+            "delta": round(comparison.delta, 1),
+            "delta_percent": round(comparison.delta_percent, 1),
+        }
 
     return json.dumps(data, indent=2)

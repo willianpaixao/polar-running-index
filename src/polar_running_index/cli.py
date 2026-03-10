@@ -4,6 +4,7 @@ import argparse
 import sys
 
 from polar_running_index.fit_parser import FitParseError, parse_fit_file
+from polar_running_index.models import ComparisonResult
 from polar_running_index.output import format_json_report, format_text_report
 from polar_running_index.running_index import calculate_running_index
 
@@ -52,6 +53,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="Disable cardiac drift correction",
     )
     parser.add_argument(
+        "--polar-ri",
+        type=float,
+        default=None,
+        help="Official Polar Running Index from Polar Flow for comparison",
+    )
+    parser.add_argument(
         "--json",
         action="store_true",
         default=False,
@@ -86,11 +93,31 @@ def main(argv: list[str] | None = None) -> int:
             drift_correction=not args.no_drift_correction,
         )
 
+        # Build comparison if Polar RI was provided
+        comparison = None
+        if args.polar_ri is not None:
+            delta = result.running_index - args.polar_ri
+            delta_pct = (delta / args.polar_ri) * 100 if args.polar_ri != 0 else 0.0
+            comparison = ComparisonResult(
+                polar_ri=args.polar_ri,
+                calculated_ri=result.running_index,
+                delta=delta,
+                delta_percent=delta_pct,
+            )
+
         # Output results
         if args.json:
-            print(format_json_report(activity, result, args.hr_max, args.hr_rest))
+            print(
+                format_json_report(
+                    activity, result, args.hr_max, args.hr_rest, comparison
+                )
+            )
         else:
-            print(format_text_report(activity, result, args.hr_max, args.hr_rest))
+            print(
+                format_text_report(
+                    activity, result, args.hr_max, args.hr_rest, comparison
+                )
+            )
 
     except FileNotFoundError as e:
         print(f"Error: {e}", file=sys.stderr)

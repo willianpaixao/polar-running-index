@@ -69,6 +69,49 @@ class TestCli:
         data = json.loads(captured.out)
         assert data["drift_corrected"] is False
 
+    def test_polar_ri_text(self, capsys):
+        """CLI with --polar-ri should show comparison in text output."""
+        exit_code = main(
+            [str(SAMPLE_FIT), "--hr-max", "190", "--hr-rest", "50", "--polar-ri", "50"]
+        )
+        assert exit_code == 0
+        captured = capsys.readouterr()
+        assert "Comparison with Polar" in captured.out
+        assert "Polar RI:" in captured.out
+        assert "Difference:" in captured.out
+
+    def test_polar_ri_json(self, capsys):
+        """CLI with --polar-ri should include comparison in JSON."""
+        exit_code = main(
+            [
+                str(SAMPLE_FIT),
+                "--hr-max",
+                "190",
+                "--hr-rest",
+                "50",
+                "--polar-ri",
+                "50",
+                "--json",
+            ]
+        )
+        assert exit_code == 0
+        captured = capsys.readouterr()
+        data = json.loads(captured.out)
+        assert "comparison" in data
+        assert data["comparison"]["polar_ri"] == 50.0
+        assert "delta" in data["comparison"]
+        assert "delta_percent" in data["comparison"]
+
+    def test_no_polar_ri_no_comparison(self, capsys):
+        """Without --polar-ri, no comparison section should appear."""
+        exit_code = main(
+            [str(SAMPLE_FIT), "--hr-max", "190", "--hr-rest", "50", "--json"]
+        )
+        assert exit_code == 0
+        captured = capsys.readouterr()
+        data = json.loads(captured.out)
+        assert "comparison" not in data
+
     def test_file_not_found(self, capsys):
         """CLI should return 1 for missing file."""
         exit_code = main(["/nonexistent.fit", "--hr-max", "190", "--hr-rest", "50"])

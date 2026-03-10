@@ -86,6 +86,16 @@ class RunningIndexResult:
 
 
 @dataclass
+class ComparisonResult:
+    """Comparison between calculated and official Polar Running Index."""
+
+    polar_ri: float  # Official value from Polar Flow
+    calculated_ri: float  # Our computed value
+    delta: float  # calculated - polar
+    delta_percent: float  # (delta / polar) * 100
+
+
+@dataclass
 class RaceTimePrediction:
     """Predicted race time for a given distance."""
 
