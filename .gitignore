@@ -1,2 +1,3 @@
 __pycache__/
 .coverage
+src/polar_running_index/_version.py
