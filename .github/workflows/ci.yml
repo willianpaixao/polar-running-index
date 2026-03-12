@@ -34,7 +34,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ["3.11", "3.12"]
+        python-version: ["3.11", "3.12", "3.13"]
     steps:
       - uses: actions/checkout@v6
 
@@ -49,7 +49,7 @@ jobs:
           pytest -v --cov-report=xml:coverage.xml
 
       - name: Upload coverage report
-        if: matrix.python-version == '3.12'
+        if: matrix.python-version == '3.13'
         uses: actions/upload-artifact@v4
         with:
           name: coverage-report
